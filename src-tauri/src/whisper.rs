@@ -50,13 +50,16 @@ impl WhisperEngine {
             .full(params, audio)
             .map_err(|e| anyhow!("inference failed: {e:?}"))?;
 
-        let n = state
-            .full_n_segments()
-            .map_err(|e| anyhow!("segment count failed: {e:?}"))?;
+        // whisper-rs 0.16: `full_n_segments` returns a plain count, and segment
+        // text comes via `get_segment(i) -> Option<WhisperSegment>` + `to_str()`
+        // (the old flat `full_get_segment_text` was removed).
+        let n = state.full_n_segments();
         let mut out = String::new();
         for i in 0..n {
-            if let Ok(seg) = state.full_get_segment_text(i) {
-                out.push_str(&seg);
+            if let Some(seg) = state.get_segment(i) {
+                if let Ok(text) = seg.to_str() {
+                    out.push_str(text);
+                }
             }
         }
         Ok(out.trim().to_string())

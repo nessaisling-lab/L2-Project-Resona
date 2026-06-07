@@ -11,6 +11,11 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
+# Build-graph fix: tauri-build -> schemars 0.8 pulls indexmap 1.x with its `std`
+# feature off, which drops IndexMap's default hasher (S = RandomState) and breaks
+# schemars' `Map<K, V>` alias (E0107: 3 generic args needed, 2 supplied). Forcing
+# `std` on for the shared build-dep copy restores the default. Not used directly.
+indexmap = { version = "1", features = ["std"] }
 
 [dependencies]
 tauri = { version = "2", features = [] }
