@@ -12,6 +12,13 @@ export const api = {
   startDictation: (language: string | null, translate: boolean) =>
     invoke<void>("start_dictation", { language, translate }),
   stopDictation: () => invoke<void>("stop_dictation"),
+  // Save the transcript locally (Documents/Resona). Returns the saved path.
+  exportTranscript: (
+    text: string,
+    format: "txt" | "md",
+    score: number | null,
+    recommendation: string | null
+  ) => invoke<string>("export_transcript", { text, format, score, recommendation }),
 };
 
 // Subscribe to the live dictation stream. Returns an unlisten cleanup fn.

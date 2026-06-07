@@ -1,5 +1,6 @@
 //! Resona desktop — Tauri 2 entry point, app state, and commands.
 mod audio;
+mod export;
 mod licensing;
 mod streaming;
 mod vad;
@@ -113,6 +114,47 @@ fn stop_dictation(state: State<AppState>) {
     }
 }
 
+/// Export the transcript to the user's Documents/Resona folder. Local only —
+/// nothing leaves the device. `format` is "txt" or "md" (free tier). Returns
+/// the saved file path so the UI can show where it went.
+#[tauri::command]
+fn export_transcript(
+    app: AppHandle,
+    state: State<AppState>,
+    text: String,
+    format: String,
+    score: Option<u32>,
+    recommendation: Option<String>,
+) -> Result<String, String> {
+    if text.trim().is_empty() {
+        return Err("Nothing to export yet.".into());
+    }
+    // Honor the tier's allowed export formats (UX gating; see licensing.rs).
+    let ent = entitlements_for(current_tier(&state));
+    let ext = export::extension_for(&format);
+    if !ent.export_formats.iter().any(|f| f == ext) {
+        return Err(format!("Exporting .{ext} is a Pro feature."));
+    }
+    let content = match ext {
+        "md" => export::build_markdown(&text, score, recommendation.as_deref()),
+        _ => export::build_txt(&text),
+    };
+    let dir = app
+        .path()
+        .document_dir()
+        .map_err(|e| format!("couldn't find Documents folder: {e}"))?
+        .join("Resona");
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    // Unique-ish filename so repeated exports don't clobber each other.
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let file = dir.join(format!("transcript-{stamp}.{ext}"));
+    std::fs::write(&file, content).map_err(|e| e.to_string())?;
+    Ok(file.to_string_lossy().into_owned())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -126,7 +168,8 @@ pub fn run() {
             set_license,
             transcribe_samples,
             start_dictation,
-            stop_dictation
+            stop_dictation,
+            export_transcript
         ])
         .run(tauri::generate_context!())
         .expect("error while running Resona");

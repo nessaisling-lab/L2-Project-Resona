@@ -16,5 +16,5 @@ export const FEATURE_MATRIX = [
   { label: "File length", free: "10 min", pro: "unlimited" },
   { label: "Grammar review", free: "local rules", pro: "AI, context-aware" },
   { label: "Translation", free: false, pro: true },
-  { label: "Export", free: "txt", pro: "txt · srt · vtt · docx" },
+  { label: "Export", free: "txt · md", pro: "txt · md · srt · vtt · docx" },
 ];

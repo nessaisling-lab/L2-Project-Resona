@@ -60,6 +60,22 @@ export default function App() {
     setReview(reviewLocal(text));
   }
 
+  async function copyText() {
+    if (!finalText.trim()) return;
+    try { await navigator.clipboard.writeText(finalText); setStatus("Copied to clipboard ✓"); }
+    catch (e) { setStatus("Copy failed: " + String(e)); }
+  }
+
+  async function exportAs(format: "txt" | "md") {
+    if (!finalText.trim()) return;
+    try {
+      const path = await api.exportTranscript(
+        finalText, format, review?.score ?? null, review?.recommendation ?? null
+      );
+      setStatus(`Saved ${format.toUpperCase()} → ${path}`);
+    } catch (e) { setStatus(String(e)); if (String(e).includes("Pro")) setShowUpgrade(true); }
+  }
+
   return (
     <div className="wrap">
       <header>
@@ -97,6 +113,12 @@ export default function App() {
           {!finalText && !partial && <span className="ph">Transcript appears here…</span>}
         </div>
         <div className="status">{status}</div>
+
+        <div className="exportbar">
+          <button disabled={!finalText.trim()} onClick={copyText}>Copy</button>
+          <button disabled={!finalText.trim()} onClick={() => exportAs("txt")}>Export .txt</button>
+          <button disabled={!finalText.trim()} onClick={() => exportAs("md")}>Export .md</button>
+        </div>
 
         {review && (
           <div className="review">

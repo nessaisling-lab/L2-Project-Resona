@@ -32,7 +32,8 @@ pub fn entitlements_for(tier: Tier) -> Entitlements {
             allowed_models: vec!["tiny".into(), "base".into()],
             llm_grammar: false,
             translation: false,
-            export_formats: vec!["txt".into()],
+            // PRD §8: txt + md are the free/MVP local export formats.
+            export_formats: vec!["txt".into(), "md".into()],
         },
         Tier::Pro => Entitlements {
             tier: "pro".into(),
@@ -46,7 +47,13 @@ pub fn entitlements_for(tier: Tier) -> Entitlements {
             ],
             llm_grammar: true,
             translation: true,
-            export_formats: vec!["txt".into(), "srt".into(), "vtt".into(), "docx".into()],
+            export_formats: vec![
+                "txt".into(),
+                "md".into(),
+                "srt".into(),
+                "vtt".into(),
+                "docx".into(),
+            ],
         },
     }
 }
