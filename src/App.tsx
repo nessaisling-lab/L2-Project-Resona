@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { api, onTranscript, decodeToMono16k } from "./lib/tauri";
 import { reviewLocal, type Review } from "./lib/grammar";
 import { FEATURE_MATRIX, type Entitlements } from "./lib/tiers";
+import appmark from "../brand/resona-appmark.svg";
 
 const MODELS = [
   { id: "tiny", label: "tiny · fastest", file: "ggml-tiny.bin" },
@@ -79,7 +80,13 @@ export default function App() {
   return (
     <div className="wrap">
       <header>
-        <h1>Resona<span>.</span></h1>
+        <div className="brand">
+          <img className="appmark" src={appmark} alt="" aria-hidden="true" />
+          <div className="names">
+            <h1>Resona<span>.</span></h1>
+            <span className="descriptor">private voice-to-text</span>
+          </div>
+        </div>
         <span className={`badge ${ent?.tier}`}>{ent?.tier ?? "…"}</span>
       </header>
 
