@@ -27,6 +27,7 @@ export default function App() {
   useEffect(() => { api.getEntitlements().then(setEnt); }, []);
 
   async function loadModel() {
+    if (!modelPath.trim()) { setStatus("Pick a model file first — paste the path to a ggml .bin."); return; }
     try {
       setStatus("Loading model…");
       await api.loadModel(modelId, modelPath);
