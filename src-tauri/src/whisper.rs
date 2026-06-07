@@ -70,3 +70,60 @@ impl WhisperEngine {
 // (one inference at a time, guarded by an Arc + the streaming consumer thread).
 unsafe impl Send for WhisperEngine {}
 unsafe impl Sync for WhisperEngine {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// End-to-end transcription against a real model + audio clip. Env-gated so it
+    /// only runs when both binaries are available (they're not committed):
+    ///   RESONA_TEST_MODEL = path to a ggml model (e.g. ggml-base.bin)
+    ///   RESONA_TEST_AUDIO = path to a 16kHz mono WAV (e.g. whisper.cpp's jfk.wav)
+    /// Exercises the whole pipeline: load -> whisper inference -> 0.16 segment API.
+    #[test]
+    fn transcribes_sample_clip() {
+        let (model, audio) =
+            match (std::env::var("RESONA_TEST_MODEL"), std::env::var("RESONA_TEST_AUDIO")) {
+                (Ok(m), Ok(a)) => (m, a),
+                _ => {
+                    eprintln!("skipping: set RESONA_TEST_MODEL and RESONA_TEST_AUDIO to run");
+                    return;
+                }
+            };
+
+        // Decode the WAV to 16kHz mono f32 — the format whisper requires.
+        let mut reader = hound::WavReader::open(&audio).expect("open test wav");
+        let spec = reader.spec();
+        let channels = spec.channels as usize;
+        let raw: Vec<f32> = match spec.sample_format {
+            hound::SampleFormat::Int => reader
+                .samples::<i32>()
+                .map(|s| s.unwrap() as f32 / (1i64 << (spec.bits_per_sample - 1)) as f32)
+                .collect(),
+            hound::SampleFormat::Float => reader.samples::<f32>().map(|s| s.unwrap()).collect(),
+        };
+        let samples: Vec<f32> = if channels <= 1 {
+            raw
+        } else {
+            raw.chunks(channels)
+                .map(|f| f.iter().copied().sum::<f32>() / channels as f32)
+                .collect()
+        };
+        assert_eq!(spec.sample_rate, 16_000, "test clip must be 16kHz");
+        assert!(!samples.is_empty(), "decoded no samples from {audio}");
+
+        let engine = WhisperEngine::load(&model).expect("load model");
+        let text = engine
+            .transcribe(&samples, Some("en"), false, false)
+            .expect("transcription failed");
+        eprintln!("transcript: {text:?}");
+
+        assert!(!text.trim().is_empty(), "expected a non-empty transcript");
+        // jfk.wav: "...ask not what your country can do for you..."
+        let low = text.to_lowercase();
+        assert!(
+            low.contains("country") || low.contains("fellow") || low.contains("americans"),
+            "expected JFK keywords, got: {text:?}"
+        );
+    }
+}
