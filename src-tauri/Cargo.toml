@@ -8,6 +8,9 @@ edition = "2021"
 [lib]
 name = "resona_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
+# No doctests in this crate; skipping them avoids a rustdoc target-triple snag
+# on mixed gnu/msvc toolchains and keeps `cargo test` fast.
+doctest = false
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
