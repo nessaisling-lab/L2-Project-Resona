@@ -1,6 +1,6 @@
 //! Thin wrapper over whisper-rs (bindings to whisper.cpp).
 use anyhow::{anyhow, Result};
-use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters};
+use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters, WhisperState};
 
 pub struct WhisperEngine {
     ctx: WhisperContext,
@@ -14,10 +14,20 @@ impl WhisperEngine {
         Ok(Self { ctx })
     }
 
-    /// Transcribe a buffer of 16kHz mono f32 samples.
-    /// `single_segment` = true is used for low-latency streaming partials.
-    pub fn transcribe(
+    /// Create a reusable inference state. The live loop should make ONE of these and
+    /// reuse it across partials/finals — `create_state` allocates the KV cache, so
+    /// recreating it every ~700ms partial is wasteful (ADR-004 upgrade path).
+    pub fn new_state(&self) -> Result<WhisperState> {
+        self.ctx
+            .create_state()
+            .map_err(|e| anyhow!("create_state failed: {e:?}"))
+    }
+
+    /// Run inference on a caller-owned state. `single_segment` = true is used for
+    /// low-latency streaming partials.
+    pub fn run(
         &self,
+        state: &mut WhisperState,
         audio: &[f32],
         language: Option<&str>,
         translate: bool,
@@ -42,10 +52,6 @@ impl WhisperEngine {
             .min(8);
         params.set_n_threads(threads);
 
-        let mut state = self
-            .ctx
-            .create_state()
-            .map_err(|e| anyhow!("create_state failed: {e:?}"))?;
         state
             .full(params, audio)
             .map_err(|e| anyhow!("inference failed: {e:?}"))?;
@@ -63,6 +69,18 @@ impl WhisperEngine {
             }
         }
         Ok(out.trim().to_string())
+    }
+
+    /// One-shot transcription (file path): uses a fresh state per call.
+    pub fn transcribe(
+        &self,
+        audio: &[f32],
+        language: Option<&str>,
+        translate: bool,
+        single_segment: bool,
+    ) -> Result<String> {
+        let mut state = self.new_state()?;
+        self.run(&mut state, audio, language, translate, single_segment)
     }
 }
 

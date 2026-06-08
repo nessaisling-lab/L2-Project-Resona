@@ -57,6 +57,15 @@ pub fn start(
         let running = running.clone();
         std::thread::spawn(move || {
             let lang = language.as_deref();
+            // One reusable inference state for the whole session — far cheaper than
+            // recreating it on every partial (ADR-004 upgrade path).
+            let mut state = match engine.new_state() {
+                Ok(s) => s,
+                Err(e) => {
+                    eprintln!("whisper state init failed: {e}");
+                    return;
+                }
+            };
             let mut utterance: Vec<f32> = Vec::new();
             let mut had_speech = false;
             let mut last_voice = Instant::now();
@@ -86,7 +95,7 @@ pub fn start(
                     && !utterance.is_empty()
                     && last_partial.elapsed().as_millis() > PARTIAL_MS
                 {
-                    if let Ok(text) = engine.transcribe(&utterance, lang, translate, true) {
+                    if let Ok(text) = engine.run(&mut state, &utterance, lang, translate, true) {
                         if !text.is_empty() {
                             let _ = app.emit("transcript://partial", Payload { text });
                         }
@@ -96,7 +105,7 @@ pub fn start(
 
                 // Finalize the utterance once the user goes quiet.
                 if had_speech && last_voice.elapsed().as_millis() > SILENCE_MS {
-                    if let Ok(text) = engine.transcribe(&utterance, lang, translate, false) {
+                    if let Ok(text) = engine.run(&mut state, &utterance, lang, translate, false) {
                         if !text.is_empty() {
                             let _ = app.emit("transcript://final", Payload { text });
                         }
@@ -106,7 +115,7 @@ pub fn start(
                     last_partial = Instant::now();
                 } else if utterance.len() > SAMPLE_RATE * 30 {
                     // Safety valve: never let a single buffer grow past 30s.
-                    if let Ok(text) = engine.transcribe(&utterance, lang, translate, false) {
+                    if let Ok(text) = engine.run(&mut state, &utterance, lang, translate, false) {
                         if !text.is_empty() {
                             let _ = app.emit("transcript://final", Payload { text });
                         }
