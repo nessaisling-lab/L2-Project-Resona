@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { api, onTranscript, decodeToMono16k } from "./lib/tauri";
-import { reviewLocal, type Review } from "./lib/grammar";
+import { reviewLocal, removeFillers, scoreWriting, type Review, type WritingScore } from "./lib/grammar";
 import { FEATURE_MATRIX, type Entitlements } from "./lib/tiers";
 import appmark from "../brand/resona-appmark.svg";
 
@@ -20,6 +20,7 @@ export default function App() {
   const [finalText, setFinalText] = useState("");
   const [partial, setPartial] = useState("");
   const [review, setReview] = useState<Review | null>(null);
+  const [score, setScore] = useState<WritingScore | null>(null);
   const [status, setStatus] = useState("");
   const [showUpgrade, setShowUpgrade] = useState(false);
   const unlisten = useRef<null | (() => void)>(null);
@@ -37,7 +38,7 @@ export default function App() {
 
   async function toggleLive() {
     if (live) { await api.stopDictation(); unlisten.current?.(); setLive(false); finalize(finalText); return; }
-    setFinalText(""); setPartial(""); setReview(null);
+    setFinalText(""); setPartial(""); setReview(null); setScore(null);
     unlisten.current = await onTranscript(
       (p) => setPartial(p),
       (f) => setFinalText((prev) => { setPartial(""); return (prev + " " + f).trim(); })
@@ -48,7 +49,7 @@ export default function App() {
 
   async function onFile(file: File) {
     try {
-      setStatus(`Decoding ${file.name}…`); setReview(null); setPartial("");
+      setStatus(`Decoding ${file.name}…`); setReview(null); setScore(null); setPartial("");
       const samples = await decodeToMono16k(file);
       setStatus("Transcribing…");
       const text = await api.transcribeSamples(samples, language === "auto" ? null : language, false);
@@ -57,9 +58,17 @@ export default function App() {
   }
 
   function finalize(text: string) {
-    if (!text.trim()) return;
-    // FREE: local linter. PRO (ent.llm_grammar): route text to your backend's AI reviewer.
+    if (!text.trim()) { setReview(null); setScore(null); return; }
+    // FREE: local linter + heuristic score. PRO (ent.llm_grammar): route to backend AI.
     setReview(reviewLocal(text));
+    setScore(scoreWriting(text));
+  }
+
+  function removeFillersAction() {
+    if (!finalText.trim()) return;
+    const { cleaned, removed } = removeFillers(finalText);
+    setFinalText(cleaned); finalize(cleaned);
+    setStatus(removed ? `Removed ${removed} filler word${removed === 1 ? "" : "s"} ✓` : "No filler words found.");
   }
 
   async function copyText() {
@@ -123,6 +132,7 @@ export default function App() {
         <div className="status">{status}</div>
 
         <div className="exportbar">
+          <button disabled={!finalText.trim()} onClick={removeFillersAction}>Remove fillers</button>
           <button disabled={!finalText.trim()} onClick={copyText}>Copy</button>
           <button disabled={!finalText.trim()} onClick={() => exportAs("txt")}>Export .txt</button>
           <button disabled={!finalText.trim()} onClick={() => exportAs("md")}>Export .md</button>
@@ -136,9 +146,23 @@ export default function App() {
               </b>
               <span>{review.recommendation} <em>· {review.source}</em></span>
             </div>
+            {score && (
+              <div className="metrics">
+                {score.metrics.map((m) => (
+                  <div className="metric" key={m.label}>
+                    <span className="mlabel">{m.label}</span>
+                    <span className="mbar" aria-hidden="true"><span style={{ width: `${m.score}%` }} /></span>
+                    <span className="mval">{m.score}</span>
+                  </div>
+                ))}
+                <div className="metricfoot">
+                  {score.words} words · {score.sentences} sentence{score.sentences === 1 ? "" : "s"} · {score.fillerCount} filler{score.fillerCount === 1 ? "" : "s"}
+                </div>
+              </div>
+            )}
             <ul>{review.issues.length === 0 ? <li className="ph">No issues found.</li>
               : review.issues.map((i, k) => <li key={k}><span className={`k ${i.kind}`}>{i.kind}</span> {i.msg}</li>)}</ul>
-            <button onClick={() => setFinalText(review.fixed)}>Apply fixes</button>
+            <button onClick={() => { setFinalText(review.fixed); finalize(review.fixed); }}>Apply fixes</button>
           </div>
         )}
       </div>
